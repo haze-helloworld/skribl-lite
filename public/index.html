@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Skribbl Lite</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="join">
+  <input id="username" placeholder="Enter username" />
+  <input id="room" placeholder="Room ID (e.g. 123)" />
+  <button id="joinBtn">Join</button>
+</div>
+
+<h2 id="status"></h2>
+
+<canvas id="board"></canvas>
+<button id="clearBtn">Clear</button>
+
+<div id="word"></div>
+
+<div id="leaderboard"></div>
+
+<div class="chat">
+  <input id="msgInput" placeholder="Type guess..." />
+  <button id="sendBtn">Send</button>
+  <div id="messages"></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="script.js"></script>
+
+</body>
+</html>

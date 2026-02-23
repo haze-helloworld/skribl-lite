@@ -1,0 +1,28 @@
+body {
+  font-family: Arial;
+  text-align: center;
+  background: #f5f5f5;
+}
+
+canvas {
+  border: 2px solid black;
+  background: white;
+  margin: 10px;
+}
+
+#leaderboard {
+  margin: 10px;
+  font-weight: bold;
+}
+
+.chat {
+  margin-top: 10px;
+}
+
+#messages {
+  height: 100px;
+  overflow-y: auto;
+  border: 1px solid #ccc;
+  background: white;
+  padding: 5px;
+}
