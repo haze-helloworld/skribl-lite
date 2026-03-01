@@ -6,13 +6,13 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-// serves frontend files from public folder
+app.use(express.static("public"));
 
 const rooms = {};
 const words = ["cat", "car", "tree", "house", "sun", "phone", "dog", "book"];
 
 function pickWord() {
-  // select and return random word from words array
+  return words[Math.floor(Math.random() * words.length)];
 }
 
 function startTurn(roomId) {
@@ -27,18 +27,25 @@ function startTurn(roomId) {
   io.to(roomId).emit("notYourTurn");
   io.to(roomId).emit("clear");
 
-  // send secret word only to drawer
+  io.to(drawer.id).emit("yourTurn", room.word);
   io.to(roomId).emit("chat", `✏️ ${drawer.username} is drawing!`);
   io.to(roomId).emit("players", room.players);
 }
 
-// runs when user connects
 io.on("connection", (socket) => {
   console.log("Connected:", socket.id);
 
+  // JOIN (fixed: accepts correct shape + prevents duplicate join)
   socket.on("joinRoom", ({ username, roomId }, ack) => {
+    username = String(username || "").trim();
+    roomId = String(roomId || "").trim();
 
-    // add user into socket room
+    if (!username || !roomId) {
+      ack?.({ ok: false, error: "username/roomId missing" });
+      return;
+    }
+
+    socket.join(roomId);
     socket.data.roomId = roomId;
 
     if (!rooms[roomId]) {
@@ -52,8 +59,9 @@ io.on("connection", (socket) => {
 
     const room = rooms[roomId];
 
+    // ✅ prevent duplicate player add (refresh/double click)
     if (!room.players.some((p) => p.id === socket.id)) {
-      // add player object into room.players array
+      room.players.push({ id: socket.id, username, score: 0 });
     }
 
     io.to(roomId).emit("players", room.players);
@@ -61,6 +69,7 @@ io.on("connection", (socket) => {
     ack?.({ ok: true });
 
     if (room.players.length === 1) {
+      // start game for first player
       room.drawerIndex = 0;
       room.roundsCompleted = 0;
       startTurn(roomId);
@@ -71,12 +80,12 @@ io.on("connection", (socket) => {
     const room = rooms[roomId];
     if (!room) return false;
     const drawer = room.players[room.drawerIndex];
-    // return true if current socket is drawer
+    return drawer && drawer.id === socket.id;
   }
 
   socket.on("drawStart", ({ roomId, x, y }) => {
     if (!rooms[roomId] || !isDrawer(roomId)) return;
-    // send drawStart event to other players
+    socket.to(roomId).emit("drawStart", { x, y });
   });
 
   socket.on("draw", ({ roomId, x, y }) => {
@@ -95,40 +104,46 @@ io.on("connection", (socket) => {
   });
 
   socket.on("chat", ({ roomId, msg }) => {
-
     const room = rooms[roomId];
     if (!room) return;
 
     const player = room.players.find((p) => p.id === socket.id);
     const drawer = room.players[room.drawerIndex];
+    if (!player || !drawer) return;
 
+    // drawer can't guess
     if (socket.id === drawer.id) return;
 
-    const guess = String(msg ?? "").trim().toLowerCase();
-    const answer = String(room.word ?? "").trim().toLowerCase();
+    const guess = String(msg ?? "")
+      .trim()
+      .toLowerCase();
+    const answer = String(room.word ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (!guess) return;
 
     if (guess === answer) {
-
-      // increase player score by 10
+      player.score += 10;
 
       io.to(roomId).emit("chat", `🎉 ${player.username} guessed it!`);
       io.to(roomId).emit("players", room.players);
 
+      // NEXT TURN (same as your repo logic)
       room.drawerIndex++;
-
       if (room.drawerIndex >= room.players.length) {
         room.drawerIndex = 0;
         room.roundsCompleted++;
       }
 
+      // 🏁 GAME END CONDITION (same as your code: 1 round)
       if (room.roundsCompleted >= 1) {
-
         const winner = room.players.reduce((a, b) =>
           a.score > b.score ? a : b,
         );
-
         io.to(roomId).emit("chat", `🏆 Game Over! Winner: ${winner.username}`);
 
+        // reset game
         room.players.forEach((p) => (p.score = 0));
         room.roundsCompleted = 0;
         room.drawerIndex = 0;
@@ -139,7 +154,6 @@ io.on("connection", (socket) => {
         const firstDrawer = room.players[0];
         const newWord = pickWord();
         room.word = newWord;
-
         io.to(firstDrawer.id).emit("yourTurn", newWord);
         io.to(roomId).emit(
           "chat",
@@ -149,21 +163,20 @@ io.on("connection", (socket) => {
         return;
       }
 
+      // continue to next drawer
       startTurn(roomId);
     } else {
       io.to(roomId).emit("chat", `${player.username}: ${msg}`);
     }
   });
 
-  // runs when user disconnects
   socket.on("disconnect", () => {
-
     const roomId = socket.data.roomId;
 
+    // fallback scan if not set
     const checkRooms = roomId ? [roomId] : Object.keys(rooms);
 
     for (const rid of checkRooms) {
-
       const room = rooms[rid];
       if (!room) continue;
 
@@ -171,8 +184,7 @@ io.on("connection", (socket) => {
       if (idx === -1) continue;
 
       const wasDrawer = idx === room.drawerIndex;
-
-      // remove player from room.players
+      room.players.splice(idx, 1);
 
       if (room.players.length === 0) {
         delete rooms[rid];
@@ -183,12 +195,12 @@ io.on("connection", (socket) => {
 
       io.to(rid).emit("players", room.players);
 
+      // if drawer left, continue game
       if (wasDrawer) startTurn(rid);
     }
   });
 });
 
-// start server on port 3000
 server.listen(3000, () => {
   console.log("Server running on http://localhost:3000");
 });
